@@ -5,6 +5,7 @@ use pretty_bytes::converter::convert;
 use serde_json;
 use std::error;
 use std::fs;
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -24,7 +25,7 @@ use config::Config;
 pub fn fix_path(path: &str) -> String {
     let path = String::from(path);
     if cfg!(windows) {
-        return path.replace("/", "\\");
+        return path.replace("/", "\\").replace(r"\\", r"\");
     }   
     path
 }
@@ -41,7 +42,8 @@ fn test_fix_path() {
 
 // This function is a secure version of the join method for PathBuf. The standart join method can
 // allow path tranversal, this function doesn't.
-pub fn secure_join<P: AsRef<Path>>(first: PathBuf, second: P) -> Result<PathBuf, io::Error> {
+pub fn secure_join<P: AsRef<Path> + fmt::Debug>(first: PathBuf, second: P) -> Result<PathBuf, io::Error> {
+    println!("first {:#?}, second {:#?}", first, second);
     let mut result = first.clone();
     result = result.join(second);
     result = result.canonicalize()?;
@@ -116,6 +118,7 @@ impl FileRespond {
 }
 
 pub fn get_file_respond(path_end: &str, config: &Config) -> String {
+    println!("path: {}", path_end);
     let path_end_fixed = fix_path(path_end);
     let path_end = path_end_fixed.as_str();
     let path = match secure_join(config.path.clone(), PathBuf::from(path_end)) {
