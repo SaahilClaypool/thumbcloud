@@ -3,12 +3,22 @@ mod category;
 use htmlescape;
 use pretty_bytes::converter::convert;
 use serde_json;
+use std::error;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use config::Config;
 
+/// On windows, fixes paths with by changing "/" to "\"
+/// On unix, keep path as is
+pub fn fix_path(path: &str) -> String {
+    let path = String::from(path);
+    if cfg!(windows) {
+        return path.replace("/", "\\");
+    }   
+    path
+}
 // This function is a secure version of the join method for PathBuf. The standart join method can
 // allow path tranversal, this function doesn't.
 pub fn secure_join<P: AsRef<Path>>(first: PathBuf, second: P) -> Result<PathBuf, io::Error> {
@@ -86,6 +96,8 @@ impl FileRespond {
 }
 
 pub fn get_file_respond(path_end: &str, config: &Config) -> String {
+    let path_end_fixed = fix_path(path_end);
+    let path_end = path_end_fixed.as_str();
     let path = match secure_join(config.path.clone(), PathBuf::from(path_end)) {
         Ok(path) => path,
         Err(_) => {
@@ -110,25 +122,7 @@ pub fn get_file_respond(path_end: &str, config: &Config) -> String {
     let mut respond = FileRespond::from_path(path_end);
 
     for entry in entries {
-        if let Ok(entry) = entry {
-            if let Ok(file_type) = entry.file_type() {
-                if let Ok(file_name) = entry.file_name().into_string() {
-                    if file_type.is_dir() {
-                        respond.folders.push(FolderItem::from_name(&file_name));
-                    } else {
-                        let item: FileItem;
-
-                        if let Ok(meta) = entry.metadata() {
-                            item = FileItem::from(&file_name, config.simple_icons, meta.len())
-                        } else {
-                            item = FileItem::from_name(&file_name, config.simple_icons);
-                        }
-
-                        respond.files.push(item);
-                    }
-                }
-            }
-        }
+        let _ = add_entry(&mut respond, entry, config).map_err(|e| eprintln!("Error: {}", e));
     }
 
     serde_json::to_string(&respond).unwrap_or_else(|_| {
@@ -137,6 +131,32 @@ pub fn get_file_respond(path_end: &str, config: &Config) -> String {
             "message": "Cannot parse content"
         }).to_string()
     })
+}
+
+/// Adds given file system entry to the response struct.
+fn add_entry(
+    respond: &mut FileRespond,
+    entry: Result<fs::DirEntry, io::Error>,
+    config: &Config,
+) -> Result<(), Box<dyn error::Error>> {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let file_name = match entry.file_name().into_string() {
+        Ok(f) => f,
+        // Bail creates an error with the given string body
+        Err(_) => bail!("failed to get filename"),
+    };
+    if file_type.is_dir() {
+        respond.folders.push(FolderItem::from_name(&file_name));
+    } else {
+        let item = match entry.metadata() {
+            Ok(meta) => FileItem::from(&file_name, config.simple_icons, meta.len()),
+            Err(_) => FileItem::from_name(&file_name, config.simple_icons),
+        };
+
+        respond.files.push(item);
+    }
+    Ok(())
 }
 
 pub fn get_new_folder_respond(path_end: &str, config: &Config) -> String {
