@@ -12,6 +12,15 @@ use config::Config;
 
 /// On windows, fixes paths with by changing "/" to "\"
 /// On unix, keep path as is
+/// 
+/// # Examples
+///
+/// ```
+/// let path = "some/windows/path.txt";
+/// if cfg!(windows) {
+///     assert_eq!(String::from(r"some\windows\path.txt"), fix_path(path));
+/// }   
+/// ```
 pub fn fix_path(path: &str) -> String {
     let path = String::from(path);
     if cfg!(windows) {
@@ -19,6 +28,17 @@ pub fn fix_path(path: &str) -> String {
     }   
     path
 }
+
+#[test]
+fn test_fix_path() {
+    let path = "some/windows/path.txt";
+    if cfg!(windows) {
+        assert_eq!(String::from(r"some\windows\path.txt"), fix_path(path));
+    } else {
+        assert_eq!(String::from("some/windows/path.txt"), fix_path(path));
+    }
+}
+
 // This function is a secure version of the join method for PathBuf. The standart join method can
 // allow path tranversal, this function doesn't.
 pub fn secure_join<P: AsRef<Path>>(first: PathBuf, second: P) -> Result<PathBuf, io::Error> {
